@@ -18,10 +18,12 @@ fn main() {
     let m3: Array2<f32> = Array::zeros((3, 1));
     println!("\nelement-wise multiplication:\n{:?}", m2 * m3);
 
-    let nn1 = ml::init_2l_nn(3, 2, 1).unwrap();
-    println!("\n2L NN:");
+    let nn1 = ml::init_deep_nn_params(vec![3, 2, 2, 1]).unwrap();
+    println!("\n3L NN:");
     println!("\nW1:\n{:?}", nn1["W1"]);
     println!("\nb1:\n{:?}", nn1["b1"]);
     println!("\nW2:\n{:?}", nn1["W2"]);
     println!("\nb2:\n{:?}", nn1["b2"]);
+    println!("\nW2:\n{:?}", nn1["W3"]);
+    println!("\nb2:\n{:?}", nn1["b3"]);
 }
