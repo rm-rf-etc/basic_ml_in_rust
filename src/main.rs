@@ -1,6 +1,7 @@
 extern crate rand;
 mod matrix2d;
 mod ml;
+mod shared;
 
 use ndarray::Array2;
 

@@ -3,8 +3,17 @@ use ndarray::Array2;
 use std::collections::HashMap;
 use std::f32::consts::E;
 
-type Matrix = Array2<f32>;
-type MatrixTriple = (Matrix, Matrix, Matrix);
+#[allow(dead_code)]
+pub type Matrix = Array2<f32>;
+
+#[allow(dead_code)]
+pub type MatrixTriple = (Matrix, Matrix, Matrix);
+
+#[allow(dead_code)]
+pub enum ActivationFn {
+    Relu,
+    Sigmoid,
+}
 
 /*
 The goal of this file is to demonstrate how the basic functionality of a multi-layer
@@ -12,17 +21,38 @@ neural network is implemented.
 */
 
 // sigmoid activation function
+#[allow(dead_code)]
 pub fn sigmoid(f: f32) -> f32 {
     1.0 / (1.0 + E.powf(-f))
 }
 
+// sigmoid activation function
+#[allow(dead_code)]
+pub fn sigmoid_m(z: Matrix) -> (Matrix, Matrix) {
+    let a = 1.0 / (1.0 + z.map(|f| E.powf(-f)));
+    let activation_cache = z;
+
+    (a, activation_cache)
+}
+
 // relu activation function
+#[allow(dead_code)]
 pub fn relu(f: f32) -> f32 {
     f32::max(0.0, f)
 }
 
+// relu activation function on matrices
+#[allow(dead_code)]
+pub fn relu_m(z: Matrix) -> (Matrix, Matrix) {
+    let a = z.map(|f| relu(*f));
+    let activation_cache = z;
+
+    (a, activation_cache)
+}
+
 // This function generates an N layer NN from a set of integers specifying the
 // respective layer sizes in order.
+#[allow(dead_code)]
 pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<HashMap<String, Matrix>, String> {
     let mut map = HashMap::new();
 
@@ -38,15 +68,88 @@ pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<HashMap<String, Matrix>
     Ok(map)
 }
 
-// Linear forward is the preceding step to calculating activation.
+// Linear forward is the preceding step to calculating activation, (a, w, b) is the cache tuple.
 pub fn linear_forward(a: Matrix, w: Matrix, b: Matrix) -> (Matrix, MatrixTriple) {
     let z = w.dot(&a) + &b;
-    // (a, w, b) is the cache tuple
-    (z, (a, w, b))
+    let cache = (a, w, b);
+
+    (z, cache)
 }
+
+// Linear->Activation forward, combines linear_forward with activation.
+#[allow(dead_code)]
+pub fn linear_activation_forward(
+    a_prev: Matrix,
+    w: Matrix,
+    b: Matrix,
+    act_fn: ActivationFn,
+) -> (Matrix, (MatrixTriple, Matrix)) {
+    let (z, linear_cache) = linear_forward(a_prev, w, b);
+    let (a, activation_cache) = match act_fn {
+        ActivationFn::Relu => relu_m(z),
+        ActivationFn::Sigmoid => sigmoid_m(z),
+    };
+    (a, (linear_cache, activation_cache))
+}
+
+// backward propagation
+#[allow(dead_code)]
+pub fn linear_backward(dz: Matrix, cache: MatrixTriple) -> Result<MatrixTriple, String> {
+    let (a_prev, w, _) = cache;
+    let m = a_prev.shape()[1] as f32;
+    let dw = 1.0 / m * dz.dot(&a_prev.t());
+    let db = 1.0 / m * matrix2d::sum_keepdims(1, &dz).unwrap();
+    let da_prev = w.t().dot(&dz);
+
+    Ok((da_prev, dw, db))
+}
+
+#[allow(dead_code)]
+pub fn sigmoid_backward_m(da: Matrix, z_cache: Matrix) -> Result<Matrix, String> {
+    if da.shape() == z_cache.shape() {
+        let e = (-1.0 * z_cache).map(|x| x.exp());
+        let s = 1.0 / (1.0 + e);
+        let dz = da * &s * (1.0 - &s);
+
+        Ok(dz)
+    } else {
+        Err("Z matrix shape does not match cache shape".to_string())
+    }
+}
+
+// relu backward propagation function
+#[allow(dead_code)]
+pub fn relu_backward_m(z: Matrix, z_cache: Matrix) -> Result<Matrix, String> {
+    if z.shape() == z_cache.shape() {
+        let mask = z_cache.map(|f: &f32| if *f > 0.0 { 1.0 } else { 0.0 });
+        Ok(z * mask)
+    } else {
+        Err("Z matrix shape does not match cache shape".to_string())
+    }
+}
+
+#[allow(dead_code)]
+pub fn linear_activation_backward(
+    da: Matrix,
+    cache: (MatrixTriple, Matrix),
+    act_fn: ActivationFn,
+) -> Result<MatrixTriple, String> {
+    let (linear_cache, activation_cache) = cache;
+
+    let dz = match act_fn {
+        ActivationFn::Relu => relu_backward_m(da, activation_cache).unwrap(),
+        ActivationFn::Sigmoid => sigmoid_backward_m(da, activation_cache).unwrap(),
+    };
+    let (da_prev, dw, db) = linear_backward(dz, linear_cache).unwrap();
+
+    Ok((da_prev, dw, db))
+}
+
+// ======================================================================
 
 #[cfg(test)]
 mod tests {
+    use super::super::shared;
     use super::*;
 
     #[test]
@@ -93,5 +196,137 @@ mod tests {
         assert_eq!(expected.shape(), z.shape());
         assert_eq!(round(expected[[0, 0]]), round(z[[0, 0]]));
         assert_eq!(round(expected[[0, 1]]), round(z[[0, 1]]));
+    }
+
+    #[test]
+    fn test_linear_activation_forward() {
+        // inputs
+        let get_awb = || {
+            let a = ndarray::arr2(&[
+                [-0.41675785, -0.05626683],
+                [-2.1361961, 1.64027081],
+                [-1.79343559, -0.84174737],
+            ]);
+            let w = ndarray::arr2(&[[0.50288142, -1.24528809, -1.05795222]]);
+            let b = ndarray::arr2(&[[-0.90900761]]);
+
+            (a, w, b)
+        };
+
+        // expected
+        let a_sig = ndarray::arr2(&[[0.96890023, 0.11013289]]);
+        let a_rel = ndarray::arr2(&[[3.43896131, 0.0]]);
+
+        let (a, w, b) = get_awb();
+        let (m_r, _) = linear_activation_forward(a, w, b, ActivationFn::Relu);
+        shared::assert_matrices_eq(&m_r, &a_rel);
+
+        let (a, w, b) = get_awb();
+        let (m_s, _) = linear_activation_forward(a, w, b, ActivationFn::Sigmoid);
+        shared::assert_matrices_eq(&m_s, &a_sig);
+    }
+
+    #[test]
+    fn test_linear_backward() {
+        // inputs
+        let z = ndarray::arr2(&[
+            [1.62434536, -0.61175641, -0.52817175, -1.07296862],
+            [0.86540763, -2.3015387, 1.74481176, -0.7612069],
+            [0.3190391, -0.24937038, 1.46210794, -2.06014071],
+        ]);
+
+        let a = ndarray::arr2(&[
+            [-0.3224172, -0.38405435, 1.13376944, -1.09989127],
+            [-0.17242821, -0.87785842, 0.04221375, 0.58281521],
+            [-1.10061918, 1.14472371, 0.90159072, 0.50249434],
+            [0.90085595, -0.68372786, -0.12289023, -0.93576943],
+            [-0.26788808, 0.53035547, -0.69166075, -0.39675353],
+        ]);
+
+        let w = ndarray::arr2(&[
+            [-0.6871727, -0.8452056, -0.6712461, -0.0126646, -1.11731035],
+            [0.2344157, 1.65980218, 0.74204416, -0.19183555, -0.88762896],
+            [-0.74715829, 1.6924546, 0.05080775, -0.63699565, 0.19091548],
+        ]);
+
+        let b = ndarray::arr2(&[[2.10025514], [0.12015895], [0.61720311]]);
+
+        // expected output
+        let exp_da = ndarray::arr2(&[
+            [-1.15171336, 0.06718465, -0.3204696, 2.09812712],
+            [0.60345879, -3.72508701, 5.81700741, -3.84326836],
+            [-0.4319552, -1.30987417, 1.72354705, 0.05070578],
+            [-0.38981415, 0.60811244, -1.25938424, 1.47191593],
+            [-2.52214926, 2.67882552, -0.67947465, 1.48119548],
+        ]);
+
+        let exp_dw = ndarray::arr2(&[
+            [0.07313866, -0.0976715, -0.87585828, 0.73763362, 0.00785716],
+            [0.85508818, 0.37530413, -0.59912655, 0.71278189, -0.58931808],
+            [0.97913304, -0.24376494, -0.08839671, 0.55151192, -0.1029090],
+        ]);
+
+        let exp_db = ndarray::arr2(&[[-0.14713786], [-0.11313155], [-0.13209101]]);
+
+        let linear_cache = (a, w, b);
+
+        // test
+        let (da, dw, db) = linear_backward(z, linear_cache).unwrap();
+
+        shared::assert_matrices_eq(&da, &exp_da);
+        shared::assert_matrices_eq(&dw, &exp_dw);
+        shared::assert_matrices_eq(&db, &exp_db);
+    }
+
+    #[test]
+    fn test_linear_activation_backward() {
+        // inputs
+        let al1 = ndarray::arr2(&[[-0.41675785, -0.05626683]]);
+        let al2 = ndarray::arr2(&[[-0.41675785, -0.05626683]]);
+        let get_linear_cache = || {
+            let a = ndarray::arr2(&[
+                [-2.1361961, 1.64027081],
+                [-1.79343559, -0.84174737],
+                [0.50288142, -1.24528809],
+            ]);
+            let w = ndarray::arr2(&[[-1.05795222, -0.90900761, 0.55145404]]);
+            let b = ndarray::arr2(&[[2.29220801]]);
+
+            (a, w, b)
+        };
+        let activation_cache1 = ndarray::arr2(&[[0.04153939, -1.11792545]]);
+        let activation_cache2 = ndarray::arr2(&[[0.04153939, -1.11792545]]);
+
+        let linear_cache1 = get_linear_cache();
+        let linear_cache2 = get_linear_cache();
+
+        // expected outputs
+        let exp_da_p_s = ndarray::arr2(&[
+            [0.11017994, 0.01105339],
+            [0.09466817, 0.00949723],
+            [-0.05743092, -0.00576154],
+        ]);
+        let exp_dw_s = ndarray::arr2(&[[0.10266786, 0.09778551, -0.01968084]]);
+        let exp_db_s = ndarray::arr2(&[[-0.05729622]]);
+        let exp_da_p_r = ndarray::arr2(&[[0.44090989, 0.0], [0.37883606, 0.0], [-0.2298228, 0.0]]);
+        let exp_dw_r = ndarray::arr2(&[[0.44513824, 0.37371418, -0.10478989]]);
+        let exp_db_r = ndarray::arr2(&[[-0.20837892]]);
+
+        // test
+        let cache1 = (linear_cache1, activation_cache1);
+        let (da_p_r, dw_r, db_r) =
+            linear_activation_backward(al1, cache1, ActivationFn::Relu).unwrap();
+
+        let cache2 = (linear_cache2, activation_cache2);
+        let (da_p_s, dw_s, db_s) =
+            linear_activation_backward(al2, cache2, ActivationFn::Sigmoid).unwrap();
+
+        shared::assert_matrices_eq(&da_p_r, &exp_da_p_r);
+        shared::assert_matrices_eq(&dw_r, &exp_dw_r);
+        shared::assert_matrices_eq(&db_r, &exp_db_r);
+
+        shared::assert_matrices_eq(&da_p_s, &exp_da_p_s);
+        shared::assert_matrices_eq(&dw_s, &exp_dw_s);
+        shared::assert_matrices_eq(&db_s, &exp_db_s);
     }
 }
