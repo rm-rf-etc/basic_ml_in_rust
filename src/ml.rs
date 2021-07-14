@@ -1,6 +1,5 @@
 use super::matrix2d;
 use ndarray::Array2;
-use std::collections::HashMap;
 use std::f32::consts::E;
 
 #[allow(dead_code)]
@@ -53,19 +52,18 @@ pub fn relu_m(z: Matrix) -> (Matrix, Matrix) {
 // This function generates an N layer NN from a set of integers specifying the
 // respective layer sizes in order.
 #[allow(dead_code)]
-pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<HashMap<String, Matrix>, String> {
-    let mut map = HashMap::new();
+pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<Vec<(Matrix, Matrix)>, String> {
+    let mut vec = vec![];
 
     for i in 1..layers.len() {
         let this_l = layers[i - 1];
         let next_l = layers[i];
         let w = matrix2d::new_rand(next_l, this_l);
         let b = Array2::<f32>::zeros((next_l, 1));
-        map.insert(format!("W{}", i), w);
-        map.insert(format!("b{}", i), b);
+        vec.push((w, b));
     }
 
-    Ok(map)
+    Ok(vec)
 }
 
 // Linear forward is the preceding step to calculating activation, (a, w, b) is the cache tuple.
@@ -145,6 +143,30 @@ pub fn linear_activation_backward(
     Ok((da_prev, dw, db))
 }
 
+#[allow(dead_code)]
+pub fn l_model_forward(
+    x: Matrix,
+    params: &mut Vec<(Matrix, Matrix)>,
+) -> Result<(Matrix, Vec<(MatrixTriple, Matrix)>), String> {
+    let mut a = x.to_owned();
+    let mut caches = vec![];
+    let len = params.len() - 1;
+
+    for _ in 0..len {
+        let a_prev = a.to_owned();
+        let (w, b) = params.remove(0);
+        let (new_a, cache) = linear_activation_forward(a_prev, w, b, ActivationFn::Relu);
+        a = new_a.to_owned();
+        caches.push(cache);
+    }
+
+    let (w, b) = params.remove(0);
+    let (al, cache) = linear_activation_forward(a, w, b, ActivationFn::Sigmoid);
+    caches.push(cache);
+
+    Ok((al, caches))
+}
+
 // ======================================================================
 
 #[cfg(test)]
@@ -169,12 +191,12 @@ mod tests {
     #[test]
     fn test_init_deep_nn_params() {
         let nn1 = init_deep_nn_params(vec![3, 2, 2, 1]).unwrap();
-        assert_eq!(nn1["W1"].shape(), [2, 3]);
-        assert_eq!(nn1["b1"].shape(), [2, 1]);
-        assert_eq!(nn1["W2"].shape(), [2, 2]);
-        assert_eq!(nn1["b2"].shape(), [2, 1]);
-        assert_eq!(nn1["W3"].shape(), [1, 2]);
-        assert_eq!(nn1["b3"].shape(), [1, 1]);
+        assert_eq!(nn1[0].0.shape(), [2, 3]);
+        assert_eq!(nn1[0].1.shape(), [2, 1]);
+        assert_eq!(nn1[1].0.shape(), [2, 2]);
+        assert_eq!(nn1[1].1.shape(), [2, 1]);
+        assert_eq!(nn1[2].0.shape(), [1, 2]);
+        assert_eq!(nn1[2].1.shape(), [1, 1]);
     }
 
     #[test]
@@ -328,5 +350,49 @@ mod tests {
         shared::assert_matrices_eq(&da_p_s, &exp_da_p_s);
         shared::assert_matrices_eq(&dw_s, &exp_dw_s);
         shared::assert_matrices_eq(&db_s, &exp_db_s);
+    }
+
+    #[test]
+    fn test_l_model_forward() {
+        // inputs
+        let a = ndarray::arr2(&[
+            [-0.31178367, 0.72900392, 0.21782079, -0.8990918],
+            [-2.48678065, 0.91325152, 1.12706373, -1.51409323],
+            [1.63929108, -0.4298936, 2.63128056, 0.60182225],
+            [-0.33588161, 1.23773784, 0.11112817, 0.12915125],
+            [0.07612761, -0.15512816, 0.63422534, 0.810655],
+        ]);
+
+        let w1 = ndarray::arr2(&[
+            [0.35480861, 1.81259031, -1.3564758, -0.46363197, 0.82465384],
+            [-1.17643148, 1.56448966, 0.71270509, -0.1810066, 0.53419953],
+            [-0.58661296, -1.48185327, 0.85724762, 0.94309899, 0.11444143],
+            [-0.02195668, -2.1271446, -0.83440747, -0.4655083, 0.23371059],
+        ]);
+        let b1 = ndarray::arr2(&[[1.38503523], [-0.51962709], [-0.78015214], [0.95560959]]);
+
+        let w2 = ndarray::arr2(&[
+            [-0.12673638, -1.36861282, 1.21848065, -0.85750144],
+            [-0.56147088, -1.0335199, 0.35877096, 1.07368134],
+            [-0.37550472, 0.39636757, -0.47144628, 2.33660781],
+        ]);
+        let b2 = ndarray::arr2(&[[1.50278553], [-0.59545972], [0.52834106]]);
+
+        let w3 = ndarray::arr2(&[[0.9398248, 0.42628539, -0.75815703]]);
+        let b3 = ndarray::arr2(&[[-0.16236698]]);
+
+        let mut vec = vec![];
+        vec.push((w1, b1));
+        vec.push((w2, b2));
+        vec.push((w3, b3));
+
+        // expected output
+        let exp_al = ndarray::arr2(&[[0.03921668, 0.70498921, 0.19734387, 0.04728177]]);
+
+        // test
+        match l_model_forward(a, &mut vec) {
+            Ok((al, _)) => shared::assert_matrices_eq(&al, &exp_al),
+            Err(msg) => println!("{}", msg),
+        }
     }
 }

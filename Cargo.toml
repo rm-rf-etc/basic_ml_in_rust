@@ -9,5 +9,3 @@ edition = "2018"
 [dependencies]
 rand = "0.8.4"
 ndarray = "0.15.3"
-expm = { git = "https://github.com/SuperFluffy/rust-expm", tag = "v0.1.2" }
-openblas-src = "0.10.4"

@@ -21,12 +21,12 @@ fn main() {
 
     let nn1 = ml::init_deep_nn_params(vec![3, 2, 2, 1]).unwrap();
     println!("\n3L NN:");
-    println!("\nW1:\n{:?}", nn1["W1"]);
-    println!("\nb1:\n{:?}", nn1["b1"]);
-    println!("\nW2:\n{:?}", nn1["W2"]);
-    println!("\nb2:\n{:?}", nn1["b2"]);
-    println!("\nW2:\n{:?}", nn1["W3"]);
-    println!("\nb2:\n{:?}", nn1["b3"]);
+    println!("\nW1:\n{:?}", nn1[0].0);
+    println!("\nb1:\n{:?}", nn1[0].1);
+    println!("\nW2:\n{:?}", nn1[1].0);
+    println!("\nb2:\n{:?}", nn1[1].1);
+    println!("\nW2:\n{:?}", nn1[2].0);
+    println!("\nb2:\n{:?}", nn1[2].1);
 
     let m1 = ndarray::arr2(&[
         [1.62434536, -0.61175641],
