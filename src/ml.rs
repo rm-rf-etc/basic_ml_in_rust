@@ -167,6 +167,14 @@ pub fn l_model_forward(
     Ok((al, caches))
 }
 
+#[allow(dead_code)]
+pub fn compute_cost(al: Matrix, y: Matrix) -> f32 {
+    let m = y.shape()[1] as f32;
+    let yy = y.to_owned() * al.map(|f| f.log(E)) + (1.0 - y) * (1.0 - al).map(|f| f.log(E));
+
+    -1.0 / m * yy.sum()
+}
+
 // ======================================================================
 
 #[cfg(test)]
@@ -394,5 +402,17 @@ mod tests {
             Ok((al, _)) => shared::assert_matrices_eq(&al, &exp_al),
             Err(msg) => println!("{}", msg),
         }
+    }
+
+    #[test]
+    fn test_compute_cost() {
+        // inputs
+        let y = ndarray::arr2(&[[1.0, 1.0, 0.0]]);
+        let al = ndarray::arr2(&[[0.8, 0.9, 0.4]]);
+        // expected
+        let exp_cost = 0.2797765635793422;
+        // test
+        let cost = compute_cost(al, y);
+        assert_eq!(cost, exp_cost);
     }
 }
