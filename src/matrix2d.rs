@@ -1,4 +1,4 @@
-use super::ml::Matrix;
+use super::ml::Matrix2D;
 use ndarray::{Array, Array2, Axis};
 use rand::prelude::*;
 
@@ -7,7 +7,7 @@ pub fn new_rand(r: usize, c: usize) -> Array2<f32> {
     Array::from_shape_fn((r, c), |_| rng.gen::<f32>())
 }
 
-pub fn sum_keepdims(axis: usize, m: &Matrix) -> Result<Matrix, String> {
+pub fn sum_keepdims(axis: usize, m: &Matrix2D) -> Result<Matrix2D, String> {
     match m.shape() {
         [x, y] => {
             let shape = match axis {

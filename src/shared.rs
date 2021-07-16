@@ -1,4 +1,4 @@
-use super::ml::Matrix;
+use super::ml::Matrix2D;
 
 #[allow(dead_code)]
 pub fn round(f: f32) -> f32 {
@@ -7,7 +7,7 @@ pub fn round(f: f32) -> f32 {
 }
 
 #[allow(dead_code)]
-pub fn assert_matrices_eq(mat: &Matrix, exp_mat: &Matrix) {
+pub fn assert_matrices_eq(mat: &Matrix2D, exp_mat: &Matrix2D) {
     let y = mat.shape()[0];
     let x = mat.shape()[1];
 

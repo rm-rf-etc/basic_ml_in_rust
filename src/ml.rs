@@ -1,12 +1,12 @@
 use super::matrix2d;
-use ndarray::Array2;
+use ndarray::{arr2, Array2, Zip};
 use std::f32::consts::E;
 
 #[allow(dead_code)]
-pub type Matrix = Array2<f32>;
+pub type Matrix2D = Array2<f32>;
 
 #[allow(dead_code)]
-pub type MatrixTriple = (Matrix, Matrix, Matrix);
+pub type MatrixTriple = (Matrix2D, Matrix2D, Matrix2D);
 
 #[allow(dead_code)]
 pub enum ActivationFn {
@@ -27,7 +27,7 @@ pub fn sigmoid(f: f32) -> f32 {
 
 // sigmoid activation function
 #[allow(dead_code)]
-pub fn sigmoid_m(z: Matrix) -> (Matrix, Matrix) {
+pub fn sigmoid_m(z: Matrix2D) -> (Matrix2D, Matrix2D) {
     let a = 1.0 / (1.0 + z.map(|f| E.powf(-f)));
     let activation_cache = z;
 
@@ -42,7 +42,7 @@ pub fn relu(f: f32) -> f32 {
 
 // relu activation function on matrices
 #[allow(dead_code)]
-pub fn relu_m(z: Matrix) -> (Matrix, Matrix) {
+pub fn relu_m(z: Matrix2D) -> (Matrix2D, Matrix2D) {
     let a = z.map(|f| relu(*f));
     let activation_cache = z;
 
@@ -52,7 +52,7 @@ pub fn relu_m(z: Matrix) -> (Matrix, Matrix) {
 // This function generates an N layer NN from a set of integers specifying the
 // respective layer sizes in order.
 #[allow(dead_code)]
-pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<Vec<(Matrix, Matrix)>, String> {
+pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<Vec<(Matrix2D, Matrix2D)>, String> {
     let mut vec = vec![];
 
     for i in 1..layers.len() {
@@ -67,7 +67,7 @@ pub fn init_deep_nn_params(layers: Vec<usize>) -> Result<Vec<(Matrix, Matrix)>, 
 }
 
 // Linear forward is the preceding step to calculating activation, (a, w, b) is the cache tuple.
-pub fn linear_forward(a: Matrix, w: Matrix, b: Matrix) -> (Matrix, MatrixTriple) {
+pub fn linear_forward(a: Matrix2D, w: Matrix2D, b: Matrix2D) -> (Matrix2D, MatrixTriple) {
     let z = w.dot(&a) + &b;
     let cache = (a, w, b);
 
@@ -77,11 +77,11 @@ pub fn linear_forward(a: Matrix, w: Matrix, b: Matrix) -> (Matrix, MatrixTriple)
 // Linear->Activation forward, combines linear_forward with activation.
 #[allow(dead_code)]
 pub fn linear_activation_forward(
-    a_prev: Matrix,
-    w: Matrix,
-    b: Matrix,
+    a_prev: Matrix2D,
+    w: Matrix2D,
+    b: Matrix2D,
     act_fn: ActivationFn,
-) -> (Matrix, (MatrixTriple, Matrix)) {
+) -> (Matrix2D, (MatrixTriple, Matrix2D)) {
     let (z, linear_cache) = linear_forward(a_prev, w, b);
     let (a, activation_cache) = match act_fn {
         ActivationFn::Relu => relu_m(z),
@@ -92,18 +92,19 @@ pub fn linear_activation_forward(
 
 // backward propagation
 #[allow(dead_code)]
-pub fn linear_backward(dz: Matrix, cache: MatrixTriple) -> Result<MatrixTriple, String> {
+pub fn linear_backward(dz: Matrix2D, cache: &MatrixTriple) -> Result<MatrixTriple, String> {
     let (a_prev, w, _) = cache;
     let m = a_prev.shape()[1] as f32;
-    let dw = 1.0 / m * dz.dot(&a_prev.t());
-    let db = 1.0 / m * matrix2d::sum_keepdims(1, &dz).unwrap();
+    let one = arr2(&[[1.0]]);
+    let dw = &one / m * dz.dot(&a_prev.t());
+    let db = &one / m * matrix2d::sum_keepdims(1, &dz).unwrap();
     let da_prev = w.t().dot(&dz);
 
     Ok((da_prev, dw, db))
 }
 
 #[allow(dead_code)]
-pub fn sigmoid_backward_m(da: Matrix, z_cache: Matrix) -> Result<Matrix, String> {
+pub fn sigmoid_backward_m(da: &Matrix2D, z_cache: &Matrix2D) -> Result<Matrix2D, String> {
     if da.shape() == z_cache.shape() {
         let e = (-1.0 * z_cache).map(|x| x.exp());
         let s = 1.0 / (1.0 + e);
@@ -117,7 +118,7 @@ pub fn sigmoid_backward_m(da: Matrix, z_cache: Matrix) -> Result<Matrix, String>
 
 // relu backward propagation function
 #[allow(dead_code)]
-pub fn relu_backward_m(z: Matrix, z_cache: Matrix) -> Result<Matrix, String> {
+pub fn relu_backward_m(z: &Matrix2D, z_cache: &Matrix2D) -> Result<Matrix2D, String> {
     if z.shape() == z_cache.shape() {
         let mask = z_cache.map(|f: &f32| if *f > 0.0 { 1.0 } else { 0.0 });
         Ok(z * mask)
@@ -128,26 +129,26 @@ pub fn relu_backward_m(z: Matrix, z_cache: Matrix) -> Result<Matrix, String> {
 
 #[allow(dead_code)]
 pub fn linear_activation_backward(
-    da: Matrix,
-    cache: (MatrixTriple, Matrix),
+    da: &Matrix2D,
+    cache: &(MatrixTriple, Matrix2D),
     act_fn: ActivationFn,
 ) -> Result<MatrixTriple, String> {
     let (linear_cache, activation_cache) = cache;
 
     let dz = match act_fn {
-        ActivationFn::Relu => relu_backward_m(da, activation_cache).unwrap(),
-        ActivationFn::Sigmoid => sigmoid_backward_m(da, activation_cache).unwrap(),
+        ActivationFn::Relu => relu_backward_m(da, &activation_cache).unwrap(),
+        ActivationFn::Sigmoid => sigmoid_backward_m(da, &activation_cache).unwrap(),
     };
-    let (da_prev, dw, db) = linear_backward(dz, linear_cache).unwrap();
+    let (da_prev, dw, db) = linear_backward(dz, &linear_cache).unwrap();
 
     Ok((da_prev, dw, db))
 }
 
 #[allow(dead_code)]
 pub fn l_model_forward(
-    x: Matrix,
-    params: &mut Vec<(Matrix, Matrix)>,
-) -> Result<(Matrix, Vec<(MatrixTriple, Matrix)>), String> {
+    x: Matrix2D,
+    params: &mut Vec<(Matrix2D, Matrix2D)>,
+) -> Result<(Matrix2D, Vec<(MatrixTriple, Matrix2D)>), String> {
     let mut a = x.to_owned();
     let mut caches = vec![];
     let len = params.len() - 1;
@@ -168,11 +169,37 @@ pub fn l_model_forward(
 }
 
 #[allow(dead_code)]
-pub fn compute_cost(al: Matrix, y: Matrix) -> f32 {
+pub fn compute_cost(al: Matrix2D, y: Matrix2D) -> f32 {
     let m = y.shape()[1] as f32;
     let yy = y.to_owned() * al.map(|f| f.log(E)) + (1.0 - y) * (1.0 - al).map(|f| f.log(E));
 
     -1.0 / m * yy.sum()
+}
+
+fn divide(a: &Matrix2D, b: &Matrix2D) -> Matrix2D {
+    Zip::from(a).and(b).map_collect(|n1, n2| *n1 / *n2)
+}
+
+#[allow(dead_code)]
+pub fn l_model_backward(
+    al: &Matrix2D,
+    y: &Matrix2D,
+    caches: &mut Vec<(MatrixTriple, Matrix2D)>,
+) -> Vec<MatrixTriple> {
+    let mut grads = vec![];
+    let l = caches.len() - 1;
+    let dal = -(divide(&y, &al) - divide(&(1.0 - y), &(1.0 - al)));
+    let (da, dw, db) = linear_activation_backward(&dal, &caches[l], ActivationFn::Sigmoid).unwrap();
+    let mut prev_da = da;
+    grads.insert(0, (prev_da.to_owned(), dw, db));
+
+    for i in (1..=l).rev() {
+        let tpl = linear_activation_backward(&prev_da, &caches[i - 1], ActivationFn::Relu).unwrap();
+        prev_da = tpl.0.to_owned();
+        grads.insert(0, tpl);
+    }
+
+    grads
 }
 
 // ======================================================================
@@ -301,7 +328,7 @@ mod tests {
         let linear_cache = (a, w, b);
 
         // test
-        let (da, dw, db) = linear_backward(z, linear_cache).unwrap();
+        let (da, dw, db) = linear_backward(z, &linear_cache).unwrap();
 
         shared::assert_matrices_eq(&da, &exp_da);
         shared::assert_matrices_eq(&dw, &exp_dw);
@@ -311,8 +338,7 @@ mod tests {
     #[test]
     fn test_linear_activation_backward() {
         // inputs
-        let al1 = ndarray::arr2(&[[-0.41675785, -0.05626683]]);
-        let al2 = ndarray::arr2(&[[-0.41675785, -0.05626683]]);
+        let al = ndarray::arr2(&[[-0.41675785, -0.05626683]]);
         let get_linear_cache = || {
             let a = ndarray::arr2(&[
                 [-2.1361961, 1.64027081],
@@ -345,11 +371,11 @@ mod tests {
         // test
         let cache1 = (linear_cache1, activation_cache1);
         let (da_p_r, dw_r, db_r) =
-            linear_activation_backward(al1, cache1, ActivationFn::Relu).unwrap();
+            linear_activation_backward(&al, &cache1, ActivationFn::Relu).unwrap();
 
         let cache2 = (linear_cache2, activation_cache2);
         let (da_p_s, dw_s, db_s) =
-            linear_activation_backward(al2, cache2, ActivationFn::Sigmoid).unwrap();
+            linear_activation_backward(&al, &cache2, ActivationFn::Sigmoid).unwrap();
 
         shared::assert_matrices_eq(&da_p_r, &exp_da_p_r);
         shared::assert_matrices_eq(&dw_r, &exp_dw_r);
@@ -414,5 +440,79 @@ mod tests {
         // test
         let cost = compute_cost(al, y);
         assert_eq!(cost, exp_cost);
+    }
+
+    #[test]
+    fn test_l_model_backward() {
+        // inputs
+        let al = arr2(&[[1.78862847, 0.43650985]]);
+        let y = arr2(&[[1.0, 0.0]]);
+        let linear_cache1 = (
+            arr2(&[
+                [0.09649747, -1.8634927],
+                [-0.2773882, -0.35475898],
+                [-0.08274148, -0.62700068],
+                [-0.04381817, -0.47721803],
+            ]),
+            arr2(&[
+                [-1.31386475, 0.88462238, 0.88131804, 1.70957306],
+                [0.05003364, -0.40467741, -0.54535995, -1.54647732],
+                [0.98236743, -1.10106763, -1.18504653, -0.2056499],
+            ]),
+            arr2(&[[1.48614836], [0.23671627], [-1.02378514]]),
+        );
+        let activation_cache1 = arr2(&[
+            [-0.7129932, 0.62524497],
+            [-0.16051336, -0.76883635],
+            [-0.23003072, 0.74505627],
+        ]);
+        let linear_cache2 = (
+            arr2(&[
+                [1.97611078, -1.24412333],
+                [-0.62641691, -0.80376609],
+                [-2.41908317, -0.92379202],
+            ]),
+            arr2(&[[-1.02387576, 1.12397796, -0.13191423]]),
+            arr2(&[[-1.62328545]]),
+        );
+        let activation_cache2 = arr2(&[[0.64667545, -0.35627076]]);
+        let mut caches = vec![
+            (linear_cache1, activation_cache1),
+            (linear_cache2, activation_cache2),
+        ];
+
+        // expected
+        let exp_da0 = arr2(&[
+            [0.0, 0.522579010],
+            [0.0, -0.32692060],
+            [0.0, -0.32070404],
+            [0.0, -0.74079187],
+        ]);
+        let exp_dw1 = arr2(&[
+            [0.41010002, 0.07807203, 0.13798444, 0.10502167],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.05283652, 0.01005865, 0.01777766, 0.0135308],
+        ]);
+        let exp_db1 = arr2(&[[-0.22007063], [0.0], [-0.02835349]]);
+        let exp_da1 = arr2(&[
+            [0.12913162, -0.44014127],
+            [-0.14175655, 0.483172960],
+            [0.01663708, -0.05670698],
+        ]);
+        let exp_dw2 = arr2(&[[-0.39202432, -0.13325855, -0.04601089]]);
+        let exp_db2 = arr2(&[[0.15187861]]);
+
+        // test
+        let grads = l_model_backward(&al, &y, &mut caches);
+        let (da0, dw1, db1) = &grads[0];
+        let (da1, dw2, db2) = &grads[1];
+
+        shared::assert_matrices_eq(&da0, &exp_da0);
+        shared::assert_matrices_eq(&dw1, &exp_dw1);
+        shared::assert_matrices_eq(&db1, &exp_db1);
+
+        shared::assert_matrices_eq(&da1, &exp_da1);
+        shared::assert_matrices_eq(&dw2, &exp_dw2);
+        shared::assert_matrices_eq(&db2, &exp_db2);
     }
 }
