@@ -6,6 +6,9 @@ use std::f32::consts::E;
 pub type Matrix2D = Array2<f32>;
 
 #[allow(dead_code)]
+pub type MatrixDouble = (Matrix2D, Matrix2D);
+
+#[allow(dead_code)]
 pub type MatrixTriple = (Matrix2D, Matrix2D, Matrix2D);
 
 #[allow(dead_code)]
@@ -106,7 +109,7 @@ pub fn linear_backward(dz: Matrix2D, cache: &MatrixTriple) -> Result<MatrixTripl
 #[allow(dead_code)]
 pub fn sigmoid_backward_m(da: &Matrix2D, z_cache: &Matrix2D) -> Result<Matrix2D, String> {
     if da.shape() == z_cache.shape() {
-        let e = (-1.0 * z_cache).map(|x| x.exp());
+        let e = (-z_cache).map(|x| x.exp());
         let s = 1.0 / (1.0 + e);
         let dz = da * &s * (1.0 - &s);
 
@@ -120,7 +123,7 @@ pub fn sigmoid_backward_m(da: &Matrix2D, z_cache: &Matrix2D) -> Result<Matrix2D,
 #[allow(dead_code)]
 pub fn relu_backward_m(z: &Matrix2D, z_cache: &Matrix2D) -> Result<Matrix2D, String> {
     if z.shape() == z_cache.shape() {
-        let mask = z_cache.map(|f: &f32| if *f > 0.0 { 1.0 } else { 0.0 });
+        let mask = z_cache.map(|f| if *f > 0.0 { 1.0 } else { 0.0 });
         Ok(z * mask)
     } else {
         Err("Z matrix shape does not match cache shape".to_string())
@@ -200,6 +203,16 @@ pub fn l_model_backward(
     }
 
     grads
+}
+
+#[allow(dead_code)]
+pub fn update_parameters(params: &mut Vec<MatrixDouble>, grads: Vec<MatrixTriple>, rate: f32) {
+    let len = params.len();
+    for i in 0..len {
+        let (w, b) = &params[i];
+        let (_, dw, db) = &grads[i];
+        params[i] = (w - rate * dw, b - rate * db);
+    }
 }
 
 // ======================================================================
@@ -514,5 +527,52 @@ mod tests {
         shared::assert_matrices_eq(&da1, &exp_da1);
         shared::assert_matrices_eq(&dw2, &exp_dw2);
         shared::assert_matrices_eq(&db2, &exp_db2);
+    }
+
+    #[test]
+    fn test_update_parameters() {
+        // inputs
+        let w1 = arr2(&[
+            [-0.41675785, -0.05626683, -2.1361961, 1.64027081],
+            [-1.79343559, -0.84174737, 0.50288142, -1.24528809],
+            [-1.05795222, -0.90900761, 0.55145404, 2.29220801],
+        ]);
+        let b1 = arr2(&[[0.04153939], [-1.11792545], [0.53905832]]);
+
+        let w2 = arr2(&[[-0.5961597, -0.0191305, 1.17500122]]);
+        let b2 = arr2(&[[-0.74787095]]);
+        let mut parameters = vec![(w1, b1), (w2, b2)];
+
+        let da0 = arr2(&[[0.0]]);
+        let dw1 = arr2(&[
+            [1.78862847, 0.43650985, 0.09649747, -1.8634927],
+            [-0.2773882, -0.35475898, -0.08274148, -0.62700068],
+            [-0.04381817, -0.47721803, -1.31386475, 0.88462238],
+        ]);
+        let db1 = arr2(&[[0.88131804], [1.70957306], [0.05003364]]);
+
+        let da1 = arr2(&[[0.0]]);
+        let dw2 = arr2(&[[-0.40467741, -0.54535995, -1.54647732]]);
+        let db2 = arr2(&[[0.98236743]]);
+        let grads = vec![(da0, dw1, db1), (da1, dw2, db2)];
+
+        // expected
+        let exp_w1 = arr2(&[
+            [-0.59562069, -0.09991781, -2.14584584, 1.82662008],
+            [-1.76569676, -0.80627147, 0.51115557, -1.18258802],
+            [-1.0535704, -0.86128581, 0.68284052, 2.20374577],
+        ]);
+        let exp_b1 = arr2(&[[-0.04659241], [-1.28888275], [0.53405496]]);
+        let exp_w2 = arr2(&[[-0.55569196, 0.0354055, 1.32964895]]);
+        let exp_b2 = arr2(&[[-0.84610769]]);
+
+        // test
+        update_parameters(&mut parameters, grads, 0.1);
+        let (w1, b1) = &parameters[0];
+        let (w2, b2) = &parameters[1];
+        shared::assert_matrices_eq(&exp_w1, w1);
+        shared::assert_matrices_eq(&exp_b1, b1);
+        shared::assert_matrices_eq(&exp_w2, w2);
+        shared::assert_matrices_eq(&exp_b2, b2);
     }
 }
