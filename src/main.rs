@@ -1,45 +1,65 @@
+extern crate image;
 extern crate rand;
 mod matrix2d;
 mod ml;
 mod shared;
 
+use image::io::Reader;
+use ml::*;
 use ndarray::Array2;
+use std::fs;
+
+fn file_to_vec(path: &str) -> Vec<f32> {
+    Reader::open(path)
+        .unwrap()
+        .decode()
+        .unwrap()
+        .to_rgb8()
+        .to_vec()
+        .iter()
+        .map(|i| *i as f32)
+        .collect::<Vec<f32>>()
+}
+
+fn files_vec(root: &str) -> Vec<String> {
+    fs::read_dir(root)
+        .unwrap()
+        .into_iter()
+        .map(|f| f.unwrap().path().display().to_string())
+        .collect::<Vec<String>>()
+}
 
 fn main() {
-    println!("\nsigmoid of -1: {:?}", ml::sigmoid(-1.0));
+    let num_iterations = 6;
+    let vec = files_vec("images/test/")
+        .iter()
+        .map(|file| file_to_vec(file))
+        .collect::<Vec<Vec<f32>>>();
+    let num_images = vec.len();
+    let input_layer = matrix2d::from_2d_vec(&vec, 64 * 64 * 3)
+        .map(|f| f / 255.0)
+        .t()
+        .to_owned();
+    let labels = Array2::ones((1, num_images));
 
-    println!("\nrelu of -1: {:?}", ml::relu(-1.0));
+    println!("Labels {:?}", labels.shape());
+    println!("Inputs {:?}\n", input_layer.shape());
 
-    let m1 = matrix2d::new_rand(3, 2);
-    println!("\nmatrix of 3x2:\n{:?}", m1);
+    let layers = vec![
+        (12288, ActivationFn::Relu),
+        (7, ActivationFn::Relu),
+        (1, ActivationFn::Sigmoid),
+    ];
+    let mut model = ml::ModelTrainer::new(input_layer, layers, labels);
 
-    let m2 = m1 * 0.01;
-    println!("\nscalar multiplication:\n{:?}", m2);
-
-    let m3 = Array2::<f32>::zeros((3, 1));
-    println!("\nelement-wise multiplication:\n{:?}", m2 * m3);
-
-    let nn1 = ml::init_deep_nn_params(vec![3, 2, 2, 1]).unwrap();
-    println!("\n3L NN:");
-    println!("\nW1:\n{:?}", nn1[0].0);
-    println!("\nb1:\n{:?}", nn1[0].1);
-    println!("\nW2:\n{:?}", nn1[1].0);
-    println!("\nb2:\n{:?}", nn1[1].1);
-    println!("\nW2:\n{:?}", nn1[2].0);
-    println!("\nb2:\n{:?}", nn1[2].1);
-
-    let m1 = ndarray::arr2(&[
-        [1.62434536, -0.61175641],
-        [-0.52817175, -1.07296862],
-        [0.86540763, -2.3015387],
-    ]);
-    let m2 = ndarray::arr2(&[[1.74481176, -0.7612069, 0.3190391]]);
-    let b = ndarray::arr2(&[[-0.24937038]]);
-    let (z, _) = ml::linear_forward(m1, m2, b);
-    let expected_out = ndarray::arr2(&[[3.26295337, -1.23429987]]);
-
-    println!("{:?}", z[[0, 0]]);
-    println!("{:?}", expected_out[[0, 0]]);
-    println!("{:?}", z[[0, 1]]);
-    println!("{:?}", expected_out[[0, 1]]);
+    for _ in 0..num_iterations {
+        // for (w, b, _) in &model.parameters {
+        //     println!("W {:?}", w.shape());
+        //     println!("b {:?}\n", b.shape());
+        //     println!("b: {:?}", b);
+        // }
+        model.train(0.0075);
+        println!("Cost after: {}", model.cost);
+    }
+    println!("Cost after: {}", model.cost);
 }
